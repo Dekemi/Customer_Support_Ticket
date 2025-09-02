@@ -12,57 +12,60 @@ Original file is located at
 from flask import Flask, request, jsonify
 import joblib
 import re
+import nltk
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
+
+# Ensure NLTK resources are available
+
+for resource in ("stopwords", "wordnet"):
+    try:
+        nltk.data.find(f"corpora/{resource}")
+    except LookupError:
+        nltk.download(resource)
 
 # Initialize Flask app
 app = Flask(__name__)
 
 # Load the trained model and vectorizer
-model = joblib.load('ticket_classifier_model.joblib')
-vectorizer = joblib.load('tfidf_vectorizer.joblib')
+model = joblib.load("ticket_classifier_model.joblib")
+vectorizer = joblib.load("tfidf_vectorizer.joblib")
 
-# Preprocessing function (must be identical to the one used in training)
+# Preprocessing setup
 lemmatizer = WordNetLemmatizer()
-stop_words = set(stopwords.words('english'))
+stop_words = set(stopwords.words("english"))
 
-def preprocess_text(text):
+def preprocess_text(text: str) -> str:
+    """Clean and preprocess text exactly as during training."""
     text = text.lower()
-    text = re.sub(r'[^a-z\s]', '', text)
+    text = re.sub(r"[^a-z\s]", "", text)
     words = text.split()
     words = [word for word in words if word not in stop_words]
     words = [lemmatizer.lemmatize(word) for word in words]
-    return ' '.join(words)
+    return " ".join(words)
 
-# Define the prediction endpoint
-@app.route('/predict', methods=['POST'])
+# Prediction endpoint
+
+@app.route("/predict", methods=["POST"])
 def predict():
-    # Get data from the POST request
     data = request.get_json(force=True)
 
-    # Combine subject and description if provided
-    # Assuming the input JSON is like: {'subject': '...', 'description': '...'}
-    subject = data.get('subject', '')
-    description = data.get('description', '')
+    subject = data.get("subject", "")
+    description = data.get("description", "")
 
     if not subject and not description:
-        return jsonify({'error': 'No subject or description provided'}), 400
+        return jsonify({"error": "No subject or description provided"}), 400
 
     text = subject + " " + description
 
-    # Preprocess the text
     cleaned_text = preprocess_text(text)
-
-    # Vectorize the text
     text_vector = vectorizer.transform([cleaned_text])
-
-    # Make a prediction
     prediction = model.predict(text_vector)
 
-    # Return the result as JSON
-    return jsonify({'predicted_category': prediction[0]})
+    return jsonify({"predicted_category": prediction[0]})
 
-if __name__ == '__main__':
-    # Use a production-ready server like Gunicorn in a real deployment
-    # For development:
+# Run the app
+
+if __name__ == "__main__":
+    # Use gunicorn for production; Flask dev server is for testing
     app.run(debug=True, port=5000)
